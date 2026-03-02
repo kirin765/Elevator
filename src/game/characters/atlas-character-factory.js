@@ -506,38 +506,56 @@ export class AtlasCharacterFactory {
   }
 
   _resolvePartPathSpec(className, model, mood) {
-    if (className === 'skin-head') return { path: this._skinFile('head', model.skinTint), fallbackPath: '' };
-    if (className === 'skin-neck') return { path: this._skinFile('neck', model.skinTint), fallbackPath: '' };
+    const fallbackSkin = this._skinFile('head', 1);
+    const fallbackHair = this._path(['Hair', 'Black', 'blackMan1.png']);
+    const fallbackShirt = this._shirtFile({
+      ...model,
+      shirt: {
+        ...model?.shirt,
+        color: 'Blue',
+        style: 1,
+      },
+    });
+    const fallbackShirtArm = this._path(['Shirts', 'Blue', 'blueArm_short.png']);
+    const fallbackPants = this._path(['Pants', 'Blue', 'pantsBlue11.png']);
+    const fallbackShoes = this._path(['Shoes', 'Black', 'blackShoe1.png']);
+    const fallbackFaceEyes = this._path(['Face', 'Eyes', 'eyeBlack_large.png']);
+    const fallbackBrows = this._path(['Face', 'Eyebrows', 'blackBrow1.png']);
+    const fallbackNose = this._path(['Face', 'Nose', 'Tint 1', 'tint1Nose1.png']);
+    const fallbackMouth = this._path(['Face', 'Mouth', 'mouth_straight.png']);
+
+    if (className === 'skin-head') return { path: this._skinFile('head', model.skinTint), fallbackPath: fallbackSkin };
+    if (className === 'skin-neck') return { path: this._skinFile('neck', model.skinTint), fallbackPath: fallbackSkin };
     if (className === 'skin-arm-left' || className === 'skin-arm-right') {
-      return { path: this._skinFile('arm', model.skinTint), fallbackPath: '' };
+      return { path: this._skinFile('arm', model.skinTint), fallbackPath: fallbackSkin };
     }
     if (className === 'shirt-arm-left' || className === 'shirt-arm-right') {
       return {
         path: this._resolveShirtArmPath(model),
-        fallbackPath: this._skinFile('arm', model.skinTint),
+        fallbackPath: fallbackShirtArm,
       };
     }
     if (className === 'hand-left' || className === 'hand-right') {
-      return { path: this._resolveHandPath(model), fallbackPath: '' };
+      return { path: this._resolveHandPath(model), fallbackPath: this._skinFile('hand', 1) };
     }
     if (className === 'skin-leg-left' || className === 'skin-leg-right') {
-      return { path: this._skinFile('leg', model.skinTint), fallbackPath: '' };
+      return { path: this._skinFile('leg', model.skinTint), fallbackPath: this._skinFile('leg', 1) };
     }
     if (className === 'shoe-left' || className === 'shoe-right') {
-      return { path: this._shoesFile(model), fallbackPath: '' };
+      return { path: this._shoesFile(model), fallbackPath: fallbackShoes };
     }
-    if (className === 'shirt') return { path: this._shirtFile(model), fallbackPath: '' };
-    if (className === 'pants') return { path: this._pantsFile(model), fallbackPath: '' };
-    if (className === 'hair') return { path: this._hairFilePath(model), fallbackPath: '' };
+    if (className === 'shirt') return { path: this._shirtFile(model), fallbackPath: fallbackShirt };
+    if (className === 'pants') return { path: this._pantsFile(model), fallbackPath: fallbackPants };
+    if (className === 'hair') return { path: this._hairFilePath(model), fallbackPath: fallbackHair };
     if (className === 'face-eyes-left' || className === 'face-eyes-right') {
-      return { path: this._faceEyesFile(model), fallbackPath: '' };
+      return { path: this._faceEyesFile(model), fallbackPath: fallbackFaceEyes };
     }
     if (className === 'face-eyebrows') {
-      return { path: this._faceEyebrowsFile(model, mood), fallbackPath: '' };
+      return { path: this._faceEyebrowsFile(model, mood), fallbackPath: fallbackBrows };
     }
-    if (className === 'face-nose') return { path: this._faceNoseFile(model), fallbackPath: '' };
-    if (className === 'face-mouth') return { path: this._faceMouthFile(model, mood), fallbackPath: '' };
-    return { path: this._path(['missing.png']), fallbackPath: '' };
+    if (className === 'face-nose') return { path: this._faceNoseFile(model), fallbackPath: fallbackNose };
+    if (className === 'face-mouth') return { path: this._faceMouthFile(model, mood), fallbackPath: fallbackMouth };
+    return { path: this._path(['missing.png']), fallbackPath: fallbackSkin };
   }
 
   _path(parts) {

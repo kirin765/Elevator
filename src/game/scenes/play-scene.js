@@ -33,6 +33,7 @@ export class PlayScene extends Phaser.Scene {
     this.currentMood = 'stable';
     this.manualStepping = false;
     this.nextImpulseAt = 0;
+    this.motionTick = 0;
     this.missingLog = new Set();
     this.audioUnlocked = false;
   }
@@ -95,10 +96,13 @@ export class PlayScene extends Phaser.Scene {
 
   _attachMatterBody(character, centerX, centerY) {
     const body = this.matter.add.rectangle(centerX, centerY, character.width * 0.34, character.height * 0.56, {
-      frictionAir: 0.18,
-      restitution: 0.2,
+      frictionAir: 0.06,
+      friction: 0.01,
+      restitution: 0.25,
       slop: 0.02,
       isSensor: true,
+      inertia: Infinity,
+      sleepThreshold: 0,
     });
     body.ignoreGravity = true;
     body.label = character.role;
@@ -174,6 +178,7 @@ export class PlayScene extends Phaser.Scene {
     this.passengerModels = [];
     this.rng = null;
     this.nextImpulseAt = 0;
+    this.motionTick = 0;
 
     this.characterFactory.updateCharacter(this.heroCharacter, normalizeModel(this.heroModel), 'stable');
     this.heroCharacter.container.setVisible(true);
@@ -214,6 +219,7 @@ export class PlayScene extends Phaser.Scene {
     this._resetBodyToBase(this.heroCharacter);
 
     this.currentMood = 'stable';
+    this.motionTick = 0;
     this.ui.setIntroVisible(false);
     this.audioEngine.start();
     this._syncUi();
@@ -226,6 +232,10 @@ export class PlayScene extends Phaser.Scene {
     this.matter.body.setPosition(body, { x: base.x, y: base.y });
     this.matter.body.setVelocity(body, { x: 0, y: 0 });
     this.matter.body.setAngularVelocity(body, 0);
+    body.isSleeping = false;
+    if (body.sleepCounter !== undefined) {
+      body.sleepCounter = 0;
+    }
     character.container.setPosition(base.x - character.width * 0.5, base.y - character.height * 0.5);
     character.container.setRotation(0);
   }
@@ -303,49 +313,105 @@ export class PlayScene extends Phaser.Scene {
     if (navigator.vibrate) navigator.vibrate(this.modelConfig.reactionProfile.failVibration);
   }
 
+  _ensureMotionResponsiveness(body, index, risk) {
+    if (!body) return;
+    body.isSleeping = false;
+    if (body.sleepCounter !== undefined) {
+      body.sleepCounter = 0;
+    }
+
+    const now = this.time.now;
+    const phaseBias = index * 1.57;
+    const progress = this.modelConfig.travelDurationMs
+      ? (this.runtime.state.elapsedMs / this.modelConfig.travelDurationMs)
+      : 0;
+
+    const rideOffsetX = Math.sin(phaseBias + now * 0.0019 + progress * 16) * (risk === 'danger' ? 4.5 : risk === 'warn' ? 2.4 : 1.4);
+    const rideOffsetY = Math.cos(phaseBias * 0.8 + now * 0.0017 + progress * 12) * (risk === 'danger' ? 2.6 : risk === 'warn' ? 1.6 : 0.8);
+
+    body._elevatorOffsetX = rideOffsetX;
+    body._elevatorOffsetY = rideOffsetY;
+    body._risk = risk;
+  }
+
   _applyPhysics(risk) {
     const now = this.time.now;
     const visibleChars = this.characters.filter((character) => character.visible);
-    const maxDisplacement = risk === 'danger' ? 30 : risk === 'warn' ? 22 : 14;
+    const maxDisplacement = risk === 'danger' ? 48 : risk === 'warn' ? 34 : 20;
+    const impulseConfig = {
+      stable: {
+        spring: 0.00018,
+        springY: 0.0002,
+        jitter: 0.000015,
+        interval: 210,
+        mag: 0.00018,
+      },
+      warn: {
+        spring: 0.00022,
+        springY: 0.00024,
+        jitter: 0.000028,
+        interval: 140,
+        mag: 0.00045,
+      },
+      danger: {
+        spring: 0.00034,
+        springY: 0.00038,
+        jitter: 0.000042,
+        interval: 80,
+        mag: 0.0008,
+      },
+    };
+    const current = impulseConfig[risk] || impulseConfig.stable;
 
     visibleChars.forEach((character, index) => {
       const body = character.body;
       const base = character.basePosition;
-      const springX = (base.x - body.position.x) * 0.000012;
-      const springY = (base.y - body.position.y) * 0.000014;
+      if (!body || !base) return;
+
+      this._ensureMotionResponsiveness(body, index, risk);
+
+      const targetX = base.x + (body._elevatorOffsetX || 0);
+      const targetY = base.y + (body._elevatorOffsetY || 0);
+      const springX = (targetX - body.position.x) * current.spring;
+      const springY = (targetY - body.position.y) * current.springY;
       body.force.x += springX;
       body.force.y += springY;
-
-      if (risk === 'stable') {
-        body.force.x += Math.sin(now * 0.0024 + index) * 0.000003;
-      }
+      body.force.x += Math.sin(now * 0.0024 + index * 1.2) * current.jitter;
+      body.force.y += Math.cos(now * 0.0027 + index * 1.6) * (current.jitter * 0.8);
     });
 
     if ((risk === 'warn' || risk === 'danger') && now >= this.nextImpulseAt) {
-      const mag = risk === 'warn' ? 0.00026 : 0.0006;
+      const mag = current.mag;
       visibleChars.forEach((character) => {
-        const fx = (Math.random() - 0.5) * mag;
-        const fy = (Math.random() - 0.5) * mag * 0.55;
-        character.body.force.x += fx;
-        character.body.force.y += fy;
+        const body = character.body;
+        if (!body) return;
+        const jitter = Math.max(1, this.motionTick) % 4;
+        const fx = (Math.random() - 0.5) * mag * (1.2 + (risk === 'danger' ? 0.4 : 0));
+        const fy = (Math.random() - 0.5) * mag * 0.6 * jitter;
+        body.force.x += fx;
+        body.force.y += fy;
       });
 
-      this.nextImpulseAt = now + (risk === 'warn' ? 280 : 120);
+      this.nextImpulseAt = now + (risk === 'warn' ? current.interval : current.interval + 20);
       if (risk === 'danger') {
-        this.cameras.main.shake(45, 0.0012);
+        this.cameras.main.shake(45, 0.0014);
       }
     }
 
     visibleChars.forEach((character) => {
       const body = character.body;
       const base = character.basePosition;
-      const dx = body.position.x - base.x;
-      const dy = body.position.y - base.y;
+      if (!body || !base) return;
+
+      const targetX = base.x + (body._elevatorOffsetX || 0);
+      const targetY = base.y + (body._elevatorOffsetY || 0);
+      const dx = body.position.x - targetX;
+      const dy = body.position.y - targetY;
       const dist = Math.hypot(dx, dy);
 
       if (dist > maxDisplacement) {
         const ratio = maxDisplacement / dist;
-        this.matter.body.setPosition(body, { x: base.x + dx * ratio, y: base.y + dy * ratio });
+        this.matter.body.setPosition(body, { x: targetX + dx * ratio, y: targetY + dy * ratio });
         this.matter.body.setVelocity(body, { x: body.velocity.x * 0.72, y: body.velocity.y * 0.72 });
       }
 
@@ -355,6 +421,8 @@ export class PlayScene extends Phaser.Scene {
       );
       character.container.setRotation(0);
     });
+
+    this.motionTick += 1;
   }
 
   _syncMood(risk) {
