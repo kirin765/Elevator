@@ -34,6 +34,7 @@ export class PlayScene extends Phaser.Scene {
     this.manualStepping = false;
     this.nextImpulseAt = 0;
     this.motionTick = 0;
+    this.lastRepairAt = 0;
     this.missingLog = new Set();
     this.audioUnlocked = false;
   }
@@ -92,6 +93,14 @@ export class PlayScene extends Phaser.Scene {
       this.passengerCharacters.push(passenger);
       this.characters.push(passenger);
     }
+  }
+
+  _repairCharacter(character, modelOverride) {
+    if (!character) return;
+    const safeModel = normalizeModel(modelOverride || this._makeModel(this.rng || makeRng(this.heroSeed + 77), character.role === 'hero'));
+    const mood = this.currentMood || 'stable';
+    this.characterFactory.updateCharacter(character, safeModel, mood);
+    this._resetBodyToBase(character);
   }
 
   _attachMatterBody(character, centerX, centerY) {
@@ -179,6 +188,7 @@ export class PlayScene extends Phaser.Scene {
     this.rng = null;
     this.nextImpulseAt = 0;
     this.motionTick = 0;
+    this.lastRepairAt = 0;
 
     this.characterFactory.updateCharacter(this.heroCharacter, normalizeModel(this.heroModel), 'stable');
     this.heroCharacter.container.setVisible(true);
@@ -203,6 +213,7 @@ export class PlayScene extends Phaser.Scene {
     this.runtime.beginRun(runSeed);
     this.rng = makeRng(runSeed);
     this.nextImpulseAt = 0;
+    this.lastRepairAt = 0;
 
     this.passengerModels = [];
     for (let i = 0; i < this.passengerCharacters.length; i += 1) {
@@ -451,6 +462,36 @@ export class PlayScene extends Phaser.Scene {
     }
   }
 
+  _autoRepairIfNeeded(stats) {
+    if (!stats || this.runtime?.state?.phase !== 'running') return;
+    if (this.time.now < this.lastRepairAt + 2500) return;
+
+    const totalVisible = stats.partsTotal || 0;
+    const missing = stats.partsMissing || 0;
+    const layoutCollapsed = stats.layoutCollapsed || false;
+    if (totalVisible <= 0) return;
+
+    const missingRatio = missing / totalVisible;
+    if (missingRatio < 0.16 && !layoutCollapsed) {
+      return;
+    }
+
+    this.lastRepairAt = this.time.now;
+
+    const hero = this.characters.find((entry) => entry?.role === 'hero');
+    if (hero) {
+      this._repairCharacter(hero, normalizeModel({}));
+    }
+
+    this.passengerCharacters.forEach((passenger) => {
+      if (passenger.visible) {
+        this._repairCharacter(passenger, normalizeModel({}));
+      }
+    });
+
+    this.missingLog.clear();
+  }
+
   _refreshCharacterStatsWarnings() {
     const stats = this.characterFactory.collectStats(this.characters.filter((character) => character.visible));
     stats.missingFrames.forEach((missingKey) => {
@@ -483,6 +524,8 @@ export class PlayScene extends Phaser.Scene {
       this._applyPhysics(risk);
     }
 
+    const characterStats = this.characterFactory.collectStats(this.characters.filter((character) => character.visible));
+    this._autoRepairIfNeeded(characterStats);
     this._refreshCharacterStatsWarnings();
   }
 
