@@ -41,7 +41,7 @@ const GameConfig = {
   debugMissingParts: true,
   npcCount: 3,
   characterScale: 0.75,
-  imageExtOrder: ['webp', 'png'],
+  imageExtOrder: ['png'],
   reactionProfile: {
     warnVibration: [60],
     dangerVibration: [80, 70, 80],
@@ -198,6 +198,50 @@ class SpriteAtlasLoader {
   }
 }
 
+class AtlasFrameRasterizer {
+  constructor() {
+    this.cache = new Map();
+  }
+
+  get(category, frameName, image, frame) {
+    if (!category || !frameName || !image || !frame) {
+      return '';
+    }
+    const key = `${category}:${frameName}:${frame.x},${frame.y},${frame.width},${frame.height}`;
+    if (this.cache.has(key)) {
+      return this.cache.get(key);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = frame.width;
+    canvas.height = frame.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return '';
+    }
+
+    ctx.clearRect(0, 0, frame.width, frame.height);
+    ctx.drawImage(
+      image,
+      frame.x,
+      frame.y,
+      frame.width,
+      frame.height,
+      0,
+      0,
+      frame.width,
+      frame.height,
+    );
+    const dataUrl = canvas.toDataURL('image/png');
+    this.cache.set(key, dataUrl);
+    return dataUrl;
+  }
+
+  clear() {
+    this.cache.clear();
+  }
+}
+
 class FartAudio {
   constructor() {
     this.ctx = null;
@@ -328,13 +372,15 @@ class GameEngine {
     };
     this.imageExtOrder = Array.isArray(config.imageExtOrder) && config.imageExtOrder.length
       ? [...new Set(config.imageExtOrder.map((value) => `${value}`.replace(/^\./, '').trim()).filter(Boolean))]
-      : ['webp', 'png'];
+      : ['png'];
     this._atlasLoader = this.config.assetMode === 'atlas' ? new SpriteAtlasLoader(this.config.assetPack?.atlas) : new SpriteAtlasLoader({});
+    this._atlasRasterizer = new AtlasFrameRasterizer();
     this._atlasLoadInit = this._atlasLoader.preloadAll();
     this._atlasLoadInit.catch(() => {});
     this._pngBase = this.config.assetPack?.pngBase || this.config.assetBaseUrl;
     this._pendingAtlasRetries = new Set();
     this._missingLog = new Set();
+    this._failedAssetUrls = new Set();
     this._partCategoryByClass = {
       'skin-head': 'skin',
       'skin-neck': 'skin',
@@ -374,8 +420,12 @@ class GameEngine {
     this._passengerNodes = [];
     this._loadStats = {
       mode: this.config.assetMode,
+      partsTotal: 0,
       partsRendered: 0,
       partsMissing: 0,
+      successRate: 0,
+      layoutCollapsed: false,
+      invalidGeometryParts: [],
       missingParts: [],
       criticalMissing: [],
     };
@@ -496,51 +546,64 @@ class GameEngine {
   }
 
   resolvePartImage(category, partPath) {
-    const frameName = this._withoutExtension(this._extractFilename(partPath));
+    const sourceName = this._extractFilename(partPath);
+    const frameName = this._withoutExtension(sourceName);
+    const atlasNameCandidates = [];
+    [sourceName, frameName].forEach((name) => {
+      if (name && !atlasNameCandidates.includes(name)) {
+        atlasNameCandidates.push(name);
+      }
+    });
     const candidate = {
       category,
       partPath,
       frameName,
+      atlasNameCandidates,
       debugCategory: `${category}:${frameName}`,
     };
 
     if (this.config.assetMode === 'atlas' && this.config.usePaletteFallback !== false) {
-      const resolved = this._atlasLoader.getFrame(category, frameName);
-      if (resolved.ready === false) {
-        if (this._pendingAtlasRetries) {
-          const retryKey = candidate.debugCategory;
-          const pending = this._pendingAtlasRetries.has(retryKey);
-          if (!pending && resolved.promise) {
-            this._pendingAtlasRetries.add(retryKey);
-            resolved.promise.finally(() => {
-              this._pendingAtlasRetries.delete(retryKey);
-            });
+      for (let i = 0; i < atlasNameCandidates.length; i += 1) {
+        const atlasName = atlasNameCandidates[i];
+        const resolved = this._atlasLoader.getFrame(category, atlasName);
+        if (resolved.ready === false) {
+          if (this._pendingAtlasRetries) {
+            const retryKey = `${candidate.debugCategory}:${atlasNameCandidates.join('|')}`;
+            const pending = this._pendingAtlasRetries.has(retryKey);
+            if (!pending && resolved.promise) {
+              this._pendingAtlasRetries.add(retryKey);
+              resolved.promise.finally(() => {
+                this._pendingAtlasRetries.delete(retryKey);
+              });
+            }
           }
+          return {
+            ...candidate,
+            mode: 'atlas',
+            pending: true,
+            promise: resolved.promise,
+          };
         }
-        return {
-          ...candidate,
-          mode: 'atlas',
-          pending: true,
-          promise: resolved.promise,
-        };
+        if (resolved.found) {
+          return {
+            ...candidate,
+            mode: 'atlas',
+            atlasFrameName: atlasName,
+            src: resolved.imageSrc,
+            image: resolved.image,
+            frame: resolved.frame,
+            frameW: resolved.frame.width,
+            frameH: resolved.frame.height,
+            status: resolved.status,
+          };
+        }
       }
-      if (resolved.found) {
-        return {
-          ...candidate,
-          mode: 'atlas',
-          src: resolved.imageSrc,
-          image: resolved.image,
-          frame: resolved.frame,
-          frameW: resolved.frame.width,
-          frameH: resolved.frame.height,
-          status: resolved.status,
-        };
-      }
+
       if (this.config.debugMissingParts) {
-        const label = `atlas-missing:${category}/${frameName}`;
+        const label = `atlas-missing:${category}/${atlasNameCandidates.join('|') || frameName}`;
         if (!this._missingLog.has(label)) {
           this._missingLog.add(label);
-          console.warn(`[Atlas] Missing frame for ${category} / ${frameName}`);
+          console.warn(`[Atlas] Missing frame for ${category}. tried=[${atlasNameCandidates.join(', ')}]`);
         }
       }
     }
@@ -568,11 +631,12 @@ class GameEngine {
         unique.push(value);
       }
     });
+    const filtered = unique.filter((value) => !this._failedAssetUrls.has(value));
     return {
       ...candidate,
       mode: 'png',
-      candidates: unique,
-      status: unique.length ? 'ready' : 'missing',
+      candidates: filtered,
+      status: filtered.length ? 'ready' : 'missing',
     };
   }
 
@@ -762,6 +826,7 @@ class GameEngine {
     part.dataset.renderSource = resolved.partPath || '';
     part.dataset.renderReason = '';
     part.dataset.offsetApplied = '';
+    part.dataset.atlasFrameName = resolved.atlasFrameName || resolved.frameName || '';
 
     if (!resolved.frame || !resolved.image) {
       if (this.config.usePaletteFallback) {
@@ -775,23 +840,29 @@ class GameEngine {
       return;
     }
 
-    part.style.opacity = '1';
-    part.style.background = '';
-    part.style.objectFit = 'none';
-    part.style.objectPosition = `${-resolved.frame.x}px ${-resolved.frame.y}px`;
-
-    const correction = this._atlasOffsetFixes?.[className];
-    if (correction) {
-      const tx = Number(correction.x || 0);
-      const ty = Number(correction.y || 0);
-      if (Number.isFinite(tx) && Number.isFinite(ty) && (tx !== 0 || ty !== 0)) {
-        part.style.transform = `translate(${tx}px, ${ty}px)`;
-        part.dataset.offsetApplied = '1';
+    const rasterSrc = this._atlasRasterizer.get(
+      resolved.category,
+      resolved.atlasFrameName || resolved.frameName || resolved.frame?.name || resolved.frameName || '',
+      resolved.image,
+      resolved.frame,
+    );
+    if (!rasterSrc) {
+      if (this.config.usePaletteFallback) {
+        this._setPart(characterNode, className, this._buildPngRenderSpec({
+          category: resolved.category,
+          partPath: resolved.partPath,
+        }));
+      } else {
+        this._setMissingPart(part, 'atlas-raster-failed');
       }
-    } else {
-      part.style.transform = '';
+      return;
     }
 
+    part.style.opacity = '1';
+    part.style.background = '';
+    part.style.objectFit = 'contain';
+    part.style.objectPosition = 'top left';
+    part.style.transform = '';
     part.dataset.frameX = String(resolved.frame.x);
     part.dataset.frameY = String(resolved.frame.y);
     part.dataset.frameW = String(resolved.frame.width);
@@ -807,7 +878,7 @@ class GameEngine {
 
     part.dataset.assetCandidates = '';
     part.dataset.assetIndex = '';
-    part.src = resolved.src || resolved.image?.src || this._missingPixel;
+    part.src = rasterSrc;
   }
 
   _setPngPart(part, className, resolved) {
@@ -861,10 +932,18 @@ class GameEngine {
         this._setMissingPart(part, 'missing');
         return;
       }
+      const currentUrl = part.currentSrc || part.src;
+      if (currentUrl) {
+        this._failedAssetUrls.add(currentUrl);
+      }
       const current = Number(part.dataset.assetIndex || 0);
       const next = current + 1;
       if (next < candidates.length) {
         part.dataset.assetIndex = String(next);
+        if (this._failedAssetUrls.has(candidates[next])) {
+          this._setMissingPart(part, 'missing');
+          return;
+        }
         part.src = candidates[next];
         return;
       }
@@ -927,8 +1006,11 @@ class GameEngine {
     let totalParts = 0;
     let totalRendered = 0;
     let totalMissing = 0;
+    let heroPartCount = 0;
+    let heroCollapsedCount = 0;
     const missingParts = [];
     const criticalMissing = [];
+    const invalidGeometryParts = [];
 
     characters.forEach((entry) => {
       const node = entry.node;
@@ -940,10 +1022,26 @@ class GameEngine {
       }
       const partNodes = Array.from(node.querySelectorAll('.part'));
       const partStates = new Map();
+      const nodeRect = node.getBoundingClientRect();
       totalParts += partNodes.length;
       partNodes.forEach((part) => {
         const className = part.className.split(' ').find((token) => token !== 'part');
         const hasAsset = part.complete && part.naturalWidth > 0 && part.naturalHeight > 0 && part.src !== this._missingPixel;
+        const rect = part.getBoundingClientRect();
+        const isCollapsedGeometry =
+          Math.abs(rect.left - nodeRect.left) < 1 &&
+          Math.abs(rect.top - nodeRect.top) < 1 &&
+          Math.abs(rect.width - nodeRect.width) < 1 &&
+          Math.abs(rect.height - nodeRect.height) < 1;
+        if (isCollapsedGeometry) {
+          invalidGeometryParts.push(`${entry.role}.${className}`);
+          if (entry.role === 'hero') {
+            heroCollapsedCount += 1;
+          }
+        }
+        if (entry.role === 'hero') {
+          heroPartCount += 1;
+        }
         if (hasAsset) {
           totalRendered += 1;
           partStates.set(className, true);
@@ -977,6 +1075,8 @@ class GameEngine {
       partsRendered: totalRendered,
       partsMissing: totalMissing,
       successRate: totalParts ? Math.round((totalRendered / totalParts) * 100) : 0,
+      layoutCollapsed: heroPartCount > 0 ? heroCollapsedCount >= Math.ceil(heroPartCount * 0.6) : false,
+      invalidGeometryParts,
       missingParts,
       criticalMissing,
       sampleParts: missingParts.slice(0, 12),
