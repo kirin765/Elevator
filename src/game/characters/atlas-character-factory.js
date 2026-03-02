@@ -33,6 +33,17 @@ const ATLAS_KEYS = {
 };
 
 const slug = (value) => `${value || ''}`.toLowerCase().replace(/ /g, '');
+const normalizePantsVariant = (value) => {
+  const raw = `${value ?? ''}`.trim();
+  if (raw === '_long' || raw === '_short' || raw === '_shorter') {
+    return raw;
+  }
+  const numeric = Number.parseInt(raw, 10);
+  if (Number.isFinite(numeric) && numeric >= 1 && numeric <= 4) {
+    return String(numeric);
+  }
+  return '1';
+};
 const FACE_LAYOUT_BY_CLASS = {
   'face-eyebrows': 'eyebrows',
   'face-eyes-left': 'eyesLeft',
@@ -435,7 +446,7 @@ export const normalizeModel = (model) => {
     },
     pants: {
       color: model?.pants?.color || CHARACTER_CATALOG.pantsColors[0],
-      variant: model?.pants?.variant || '1',
+      variant: normalizePantsVariant(model?.pants?.variant),
     },
     shoes: {
       color: model?.shoes?.color || CHARACTER_CATALOG.shoeColors[0],
