@@ -1,5 +1,6 @@
 import {
   CHARACTER_LAYOUT,
+  LIMB_LAYOUT,
   FACE_LAYOUT_ON_HEAD,
   CHARACTER_CATALOG,
   HERO_SIZE,
@@ -8,13 +9,20 @@ import {
 } from '../config.js';
 
 const PART_ORDER = [
-  { className: 'skin-head', category: 'skin' },
-  { className: 'skin-neck', category: 'skin' },
-  { className: 'skin-arm', category: 'skin' },
-  { className: 'skin-leg', category: 'skin' },
+  { className: 'skin-leg-left', category: 'skin' },
+  { className: 'skin-leg-right', category: 'skin' },
+  { className: 'shoe-left', category: 'shoes' },
+  { className: 'shoe-right', category: 'shoes' },
+  { className: 'skin-arm-left', category: 'skin' },
+  { className: 'shirt-arm-left', category: 'shirts' },
+  { className: 'hand-left', category: 'skin' },
   { className: 'shirt', category: 'shirts' },
   { className: 'pants', category: 'pants' },
-  { className: 'shoes', category: 'shoes' },
+  { className: 'skin-neck', category: 'skin' },
+  { className: 'skin-head', category: 'skin' },
+  { className: 'skin-arm-right', category: 'skin' },
+  { className: 'shirt-arm-right', category: 'shirts' },
+  { className: 'hand-right', category: 'skin' },
   { className: 'face-eyes-left', category: 'face' },
   { className: 'face-eyes-right', category: 'face' },
   { className: 'face-nose', category: 'face' },
@@ -32,7 +40,17 @@ const ATLAS_KEYS = {
   hair: 'atlas-hair',
 };
 
+const FACE_LAYOUT_BY_CLASS = {
+  'face-eyebrows': 'eyebrows',
+  'face-eyes-left': 'eyesLeft',
+  'face-eyes-right': 'eyesRight',
+  'face-nose': 'nose',
+  'face-mouth': 'mouth',
+};
+
 const slug = (value) => `${value || ''}`.toLowerCase().replace(/ /g, '');
+const isMirroredPart = (className) => className.endsWith('-right');
+
 const normalizePantsVariant = (value) => {
   const raw = `${value ?? ''}`.trim();
   if (raw === '_long' || raw === '_short' || raw === '_shorter') {
@@ -44,13 +62,6 @@ const normalizePantsVariant = (value) => {
   }
   return '1';
 };
-const FACE_LAYOUT_BY_CLASS = {
-  'face-eyebrows': 'eyebrows',
-  'face-eyes-left': 'eyesLeft',
-  'face-eyes-right': 'eyesRight',
-  'face-nose': 'nose',
-  'face-mouth': 'mouth',
-};
 
 export class AtlasCharacterFactory {
   constructor(scene, config) {
@@ -59,6 +70,7 @@ export class AtlasCharacterFactory {
     this.pngBase = config.assetPack.pngBase;
     this.dynamicLoads = new Map();
     this.atlasCutCache = new Map();
+    this.fallbackWarnings = new Set();
   }
 
   createCharacter(role, x, y) {
@@ -68,19 +80,23 @@ export class AtlasCharacterFactory {
 
     const parts = new Map();
     PART_ORDER.forEach((partInfo) => {
-      const layout = CHARACTER_LAYOUT[partInfo.className];
-      const part = this.scene.add.image(layout.x * size.width, layout.y * size.height, 'missing-part');
-      part.setOrigin(0, 0);
+      const layout = this._getPartLayout(partInfo.className);
+      if (!layout) return;
+
+      const slot = {
+        x: layout.x * size.width,
+        y: layout.y * size.height,
+        w: layout.w * size.width,
+        h: layout.h * size.height,
+      };
+
+      const part = this.scene.add.image(0, 0, 'missing-part');
+      part.setOrigin(0.5, 0.5);
       part.setDepth(layout.z || 0);
       part.setData('className', partInfo.className);
       part.setData('mode', 'missing');
       part.setData('missingKey', '');
-      part.setData('slotX', layout.x * size.width);
-      part.setData('slotY', layout.y * size.height);
-      part.setData('slotW', layout.w * size.width);
-      part.setData('slotH', layout.h * size.height);
-      part.setData('role', role);
-      this._fitPartToSlot(part, layout.w * size.width, layout.h * size.height);
+      this._setPartSlot(part, slot, isMirroredPart(partInfo.className));
       parts.set(partInfo.className, part);
       container.add(part);
     });
@@ -104,8 +120,8 @@ export class AtlasCharacterFactory {
       if (partInfo.className.startsWith('face-')) return;
       const part = character.parts.get(partInfo.className);
       if (!part) return;
-      const pngPath = this._resolvePngPath(partInfo.className, model, mood);
-      this._applyPartTexture(part, partInfo.category, pngPath);
+      const spec = this._resolvePartPathSpec(partInfo.className, model, mood);
+      this._applyPartTexture(part, partInfo.category, spec.path, spec.fallbackPath);
     });
 
     this._updateFaceLayout(character);
@@ -114,8 +130,8 @@ export class AtlasCharacterFactory {
       if (!partInfo.className.startsWith('face-')) return;
       const part = character.parts.get(partInfo.className);
       if (!part) return;
-      const pngPath = this._resolvePngPath(partInfo.className, model, mood);
-      this._applyPartTexture(part, partInfo.category, pngPath);
+      const spec = this._resolvePartPathSpec(partInfo.className, model, mood);
+      this._applyPartTexture(part, partInfo.category, spec.path, spec.fallbackPath);
     });
   }
 
@@ -134,7 +150,9 @@ export class AtlasCharacterFactory {
         if (!part) return;
         partsTotal += 1;
 
-        if (Math.abs((part.scaleX || 0) - (part.scaleY || 0)) > 0.0001) {
+        const sx = Math.abs(part.scaleX || 0);
+        const sy = Math.abs(part.scaleY || 0);
+        if (Math.abs(sx - sy) > 0.0001) {
           distortedParts += 1;
         }
 
@@ -146,8 +164,7 @@ export class AtlasCharacterFactory {
           oversizedParts.push(`${character.role}.${partInfo.className}`);
         }
 
-        const mode = part.getData('mode');
-        if (mode === 'missing') {
+        if (part.getData('mode') === 'missing') {
           partsMissing += 1;
           const miss = part.getData('missingKey');
           if (miss && !missingFrames.includes(miss)) {
@@ -156,18 +173,18 @@ export class AtlasCharacterFactory {
         }
       });
 
-      const coreClasses = ['skin-head', 'shirt', 'pants', 'shoes'];
+      const coreClasses = ['skin-head', 'shirt', 'pants', 'shoe-left', 'shoe-right'];
       const points = coreClasses
         .map((className) => character.parts.get(className))
         .filter((part) => part && part.getData('mode') !== 'missing')
         .map((part) => ({ x: part.x, y: part.y }));
 
-      if (points.length >= 3) {
+      if (points.length >= 4) {
         const xs = points.map((point) => point.x);
         const ys = points.map((point) => point.y);
         const spanX = Math.max(...xs) - Math.min(...xs);
         const spanY = Math.max(...ys) - Math.min(...ys);
-        if (spanX < character.width * 0.12 && spanY < character.height * 0.12) {
+        if (spanX < character.width * 0.18 && spanY < character.height * 0.18) {
           layoutCollapsed = true;
         }
       }
@@ -185,6 +202,10 @@ export class AtlasCharacterFactory {
     };
   }
 
+  _getPartLayout(className) {
+    return LIMB_LAYOUT[className] || CHARACTER_LAYOUT[className] || null;
+  }
+
   _extractFilename(path) {
     const clean = `${path || ''}`.split(/[?#]/)[0];
     const match = clean.match(/([^/\\]+)$/);
@@ -196,6 +217,7 @@ export class AtlasCharacterFactory {
   }
 
   _resolveAtlasFrame(category, pngPath) {
+    if (!category || !pngPath) return null;
     const atlasKey = ATLAS_KEYS[category];
     const texture = this.scene.textures.get(atlasKey);
     if (!texture) {
@@ -221,43 +243,52 @@ export class AtlasCharacterFactory {
     return `${value}`.replace(/[^a-zA-Z0-9_-]/g, '_');
   }
 
-  _fitPartToSlot(part, slotW, slotH) {
+  _fitPartToSlot(part, slotW, slotH, mirror = Boolean(part.getData('mirror'))) {
     const safeSlotW = Math.max(1, Number(slotW) || 1);
     const safeSlotH = Math.max(1, Number(slotH) || 1);
     const srcW = Math.max(1, part.width || part.frame?.width || 1);
     const srcH = Math.max(1, part.height || part.frame?.height || 1);
     const scale = Math.max(0.0001, Math.min(safeSlotW / srcW, safeSlotH / srcH));
-    part.setScale(scale, scale);
+    part.setScale(mirror ? -scale : scale, scale);
     part.setData('slotW', safeSlotW);
     part.setData('slotH', safeSlotH);
   }
 
-  _setPartSlot(part, slotX, slotY, slotW, slotH) {
-    part.setPosition(slotX, slotY);
-    part.setData('slotX', slotX);
-    part.setData('slotY', slotY);
-    this._fitPartToSlot(part, slotW, slotH);
+  _setPartSlot(part, slot, mirror = false) {
+    part.setData('slotX', slot.x);
+    part.setData('slotY', slot.y);
+    part.setData('slotW', slot.w);
+    part.setData('slotH', slot.h);
+    part.setData('mirror', mirror);
+    part.setPosition(slot.x + slot.w * 0.5, slot.y + slot.h * 0.5);
+    this._fitPartToSlot(part, slot.w, slot.h, mirror);
   }
 
   _updateFaceLayout(character) {
     const headPart = character.parts.get('skin-head');
     if (!headPart) return;
 
-    const headX = headPart.x;
-    const headY = headPart.y;
     const headW = headPart.displayWidth;
     const headH = headPart.displayHeight;
     if (headW <= 0 || headH <= 0) return;
+
+    const headLeft = headPart.x - headW * 0.5;
+    const headTop = headPart.y - headH * 0.5;
 
     Object.entries(FACE_LAYOUT_BY_CLASS).forEach(([className, layoutName]) => {
       const part = character.parts.get(className);
       const relative = FACE_LAYOUT_ON_HEAD[layoutName];
       if (!part || !relative) return;
-      const slotX = headX + headW * relative.x;
-      const slotY = headY + headH * relative.y;
-      const slotW = headW * relative.w;
-      const slotH = headH * relative.h;
-      this._setPartSlot(part, slotX, slotY, slotW, slotH);
+      this._setPartSlot(
+        part,
+        {
+          x: headLeft + headW * relative.x,
+          y: headTop + headH * relative.y,
+          w: headW * relative.w,
+          h: headH * relative.h,
+        },
+        false,
+      );
     });
   }
 
@@ -276,7 +307,6 @@ export class AtlasCharacterFactory {
     if (!frame) {
       return null;
     }
-
     const source = texture.getSourceImage();
     if (!source) {
       return null;
@@ -304,55 +334,101 @@ export class AtlasCharacterFactory {
     return textureKey;
   }
 
-  _applyPartTexture(part, category, pngPath) {
-    const atlasResolved = this._resolveAtlasFrame(category, pngPath);
-    if (atlasResolved && atlasResolved.frame) {
-      const cutTextureKey = this._getOrCreateCutTexture(category, atlasResolved.atlasKey, atlasResolved.frame);
-      if (cutTextureKey) {
-        part.setTexture(cutTextureKey);
-        this._fitPartToSlot(part, part.getData('slotW'), part.getData('slotH'));
-        part.setData('mode', 'atlas');
-        part.setData('missingKey', '');
-        return;
+  _warnPartFallback(part, fromPath, toPath, source) {
+    const className = part.getData('className') || 'part';
+    const fromName = this._extractFilename(fromPath);
+    const toName = this._extractFilename(toPath);
+    const key = `${source}:${className}:${fromName}->${toName}`;
+    if (this.fallbackWarnings.has(key)) return;
+    this.fallbackWarnings.add(key);
+    console.warn(`[Character] ${className} fallback (${source}): ${fromName} -> ${toName}`);
+  }
+
+  _setMissingPart(part, missingLabel) {
+    this._fitPartToSlot(part, part.getData('slotW'), part.getData('slotH'), Boolean(part.getData('mirror')));
+    part.setTexture('missing-part');
+    part.setData('mode', 'missing');
+    part.setData('missingKey', missingLabel);
+  }
+
+  _applyPartTexture(part, category, partPath, fallbackPath = '') {
+    const paths = [partPath, fallbackPath].filter(Boolean).filter((value, index, arr) => arr.indexOf(value) === index);
+
+    for (let i = 0; i < paths.length; i += 1) {
+      const candidatePath = paths[i];
+      const atlasResolved = this._resolveAtlasFrame(category, candidatePath);
+      if (atlasResolved && atlasResolved.frame) {
+        const cutTextureKey = this._getOrCreateCutTexture(category, atlasResolved.atlasKey, atlasResolved.frame);
+        if (cutTextureKey) {
+          part.setTexture(cutTextureKey);
+          this._fitPartToSlot(part, part.getData('slotW'), part.getData('slotH'), Boolean(part.getData('mirror')));
+          part.setData('mode', 'atlas');
+          part.setData('missingKey', '');
+          if (candidatePath !== partPath) {
+            this._warnPartFallback(part, partPath, candidatePath, 'atlas');
+          }
+          return;
+        }
       }
     }
 
-    const missingLabel = `${category}:${(atlasResolved?.missing || []).join('|') || this._extractFilename(pngPath)}`;
-    this._applyPngFallback(part, pngPath, missingLabel);
+    const missingNames = paths
+      .map((path) => this._extractFilename(path))
+      .filter(Boolean)
+      .join('|');
+    const missingLabel = `${category}:${missingNames || 'unknown'}`;
+    this._applyPngFallback(part, partPath, missingLabel, fallbackPath);
   }
 
-  _applyPngFallback(part, pngPath, missingLabel) {
+  _applyPngFallback(part, pngPath, missingLabel, fallbackPath = '') {
+    if (!pngPath) {
+      this._setMissingPart(part, missingLabel);
+      return;
+    }
+
     const key = `png-${this._withoutExtension(this._extractFilename(pngPath)).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
     if (this.scene.textures.exists(key)) {
       part.setTexture(key);
-      this._fitPartToSlot(part, part.getData('slotW'), part.getData('slotH'));
+      this._fitPartToSlot(part, part.getData('slotW'), part.getData('slotH'), Boolean(part.getData('mirror')));
       part.setData('mode', 'png');
       part.setData('missingKey', '');
       return;
     }
 
     const existingLoad = this.dynamicLoads.get(key);
+    const entry = { part, missingLabel, fallbackPath, primaryPath: pngPath };
     if (existingLoad) {
-      existingLoad.push(part);
+      existingLoad.entries.push(entry);
       return;
     }
 
-    this.dynamicLoads.set(key, [part]);
+    this.dynamicLoads.set(key, { entries: [entry] });
 
     const onComplete = () => {
-      const targets = this.dynamicLoads.get(key) || [];
+      const state = this.dynamicLoads.get(key);
+      if (!state) return;
       const hasTexture = this.scene.textures.exists(key);
-      targets.forEach((targetPart) => {
+      state.entries.forEach((current) => {
         if (hasTexture) {
-          targetPart.setTexture(key);
-          this._fitPartToSlot(targetPart, targetPart.getData('slotW'), targetPart.getData('slotH'));
-          targetPart.setData('mode', 'png');
-          targetPart.setData('missingKey', '');
-        } else {
-          targetPart.setTexture('missing-part');
-          targetPart.setData('mode', 'missing');
-          targetPart.setData('missingKey', missingLabel);
+          current.part.setTexture(key);
+          this._fitPartToSlot(
+            current.part,
+            current.part.getData('slotW'),
+            current.part.getData('slotH'),
+            Boolean(current.part.getData('mirror')),
+          );
+          current.part.setData('mode', 'png');
+          current.part.setData('missingKey', '');
+          return;
         }
+
+        if (current.fallbackPath && current.fallbackPath !== current.primaryPath) {
+          this._warnPartFallback(current.part, current.primaryPath, current.fallbackPath, 'png');
+          this._applyPngFallback(current.part, current.fallbackPath, current.missingLabel, '');
+          return;
+        }
+
+        this._setMissingPart(current.part, current.missingLabel);
       });
       this.dynamicLoads.delete(key);
     };
@@ -367,53 +443,101 @@ export class AtlasCharacterFactory {
     this.scene.load.start();
   }
 
-  _resolvePngPath(className, model, mood) {
-    if (className === 'skin-head') return this._path(['Skin', `Tint ${model.skinTint}`, `tint${model.skinTint}_head.png`]);
-    if (className === 'skin-neck') return this._path(['Skin', `Tint ${model.skinTint}`, `tint${model.skinTint}_neck.png`]);
-    if (className === 'skin-arm') return this._path(['Skin', `Tint ${model.skinTint}`, `tint${model.skinTint}_arm.png`]);
-    if (className === 'skin-leg') return this._path(['Skin', `Tint ${model.skinTint}`, `tint${model.skinTint}_leg.png`]);
+  _skinFile(part, skinTint) {
+    return this._path(['Skin', `Tint ${skinTint}`, `tint${skinTint}_${part}.png`]);
+  }
 
-    if (className === 'shirt') {
-      const prefix = model.shirt.color === 'Yellow' ? 'shirtYellow' : `${slug(model.shirt.color)}Shirt`;
-      return this._path(['Shirts', model.shirt.color, `${prefix}${model.shirt.style}.png`]);
+  _hairFilePath(model) {
+    const color = model.hair.color;
+    return this._path(['Hair', color, `${slug(color)}${model.hair.gender}${model.hair.style}.png`]);
+  }
+
+  _shirtFile(model) {
+    const prefix = model.shirt.color === 'Yellow' ? 'shirtYellow' : `${slug(model.shirt.color)}Shirt`;
+    return this._path(['Shirts', model.shirt.color, `${prefix}${model.shirt.style}.png`]);
+  }
+
+  _resolveSleeveLength(style) {
+    const safeStyle = clamp(Number.parseInt(style, 10) || 1, 1, 8);
+    if (safeStyle <= 3) return 'long';
+    if (safeStyle <= 6) return 'short';
+    return 'shorter';
+  }
+
+  _resolveShirtArmPath(model) {
+    const color = model.shirt.color;
+    const sleeve = this._resolveSleeveLength(model.shirt.style);
+    const prefix = color === 'Yellow' ? 'armYellow' : `${slug(color)}Arm`;
+    return this._path(['Shirts', color, `${prefix}_${sleeve}.png`]);
+  }
+
+  _resolveHandPath(model) {
+    return this._skinFile('hand', model.skinTint);
+  }
+
+  _pantsFile(model) {
+    const prefix = model.pants.color.replace(/ /g, '');
+    return this._path(['Pants', model.pants.color, `pants${prefix}${model.pants.variant}.png`]);
+  }
+
+  _shoesFile(model) {
+    const color = model.shoes.color;
+    const prefix = color === 'Brown 1' ? 'brown' : color === 'Brown 2' ? 'brown2' : slug(color);
+    return this._path(['Shoes', color, `${prefix}Shoe${model.shoes.style}.png`]);
+  }
+
+  _faceEyesFile(model) {
+    return this._path(['Face', 'Eyes', `eye${model.face.eyeColor}_large.png`]);
+  }
+
+  _faceEyebrowsFile(model, mood) {
+    const variant = mood === 'danger' ? 3 : mood === 'warn' ? 2 : 1;
+    return this._path(['Face', 'Eyebrows', `${model.face.eyebrowColor}Brow${variant}.png`]);
+  }
+
+  _faceNoseFile(model) {
+    return this._path(['Face', 'Nose', `Tint ${model.face.noseTint}`, `tint${model.face.noseTint}Nose${model.face.noseStyle}.png`]);
+  }
+
+  _faceMouthFile(model, mood) {
+    const base = model.face.baseMouth || CHARACTER_CATALOG.mouths[0];
+    const mouth = mood === 'danger' ? 'mouth_sad' : mood === 'warn' ? 'mouth_oh' : base;
+    return this._path(['Face', 'Mouth', `${mouth}.png`]);
+  }
+
+  _resolvePartPathSpec(className, model, mood) {
+    if (className === 'skin-head') return { path: this._skinFile('head', model.skinTint), fallbackPath: '' };
+    if (className === 'skin-neck') return { path: this._skinFile('neck', model.skinTint), fallbackPath: '' };
+    if (className === 'skin-arm-left' || className === 'skin-arm-right') {
+      return { path: this._skinFile('arm', model.skinTint), fallbackPath: '' };
     }
-
-    if (className === 'pants') {
-      const prefix = model.pants.color.replace(/ /g, '');
-      return this._path(['Pants', model.pants.color, `pants${prefix}${model.pants.variant}.png`]);
+    if (className === 'shirt-arm-left' || className === 'shirt-arm-right') {
+      return {
+        path: this._resolveShirtArmPath(model),
+        fallbackPath: this._skinFile('arm', model.skinTint),
+      };
     }
-
-    if (className === 'shoes') {
-      const color = model.shoes.color;
-      const prefix = color === 'Brown 1' ? 'brown' : color === 'Brown 2' ? 'brown2' : slug(color);
-      return this._path(['Shoes', color, `${prefix}Shoe${model.shoes.style}.png`]);
+    if (className === 'hand-left' || className === 'hand-right') {
+      return { path: this._resolveHandPath(model), fallbackPath: '' };
     }
-
-    if (className === 'hair') {
-      const color = model.hair.color;
-      return this._path(['Hair', color, `${slug(color)}${model.hair.gender}${model.hair.style}.png`]);
+    if (className === 'skin-leg-left' || className === 'skin-leg-right') {
+      return { path: this._skinFile('leg', model.skinTint), fallbackPath: '' };
     }
-
+    if (className === 'shoe-left' || className === 'shoe-right') {
+      return { path: this._shoesFile(model), fallbackPath: '' };
+    }
+    if (className === 'shirt') return { path: this._shirtFile(model), fallbackPath: '' };
+    if (className === 'pants') return { path: this._pantsFile(model), fallbackPath: '' };
+    if (className === 'hair') return { path: this._hairFilePath(model), fallbackPath: '' };
     if (className === 'face-eyes-left' || className === 'face-eyes-right') {
-      return this._path(['Face', 'Eyes', `eye${model.face.eyeColor}_large.png`]);
+      return { path: this._faceEyesFile(model), fallbackPath: '' };
     }
-
     if (className === 'face-eyebrows') {
-      const variant = mood === 'danger' ? 3 : mood === 'warn' ? 2 : 1;
-      return this._path(['Face', 'Eyebrows', `${model.face.eyebrowColor}Brow${variant}.png`]);
+      return { path: this._faceEyebrowsFile(model, mood), fallbackPath: '' };
     }
-
-    if (className === 'face-nose') {
-      return this._path(['Face', 'Nose', `Tint ${model.face.noseTint}`, `tint${model.face.noseTint}Nose${model.face.noseStyle}.png`]);
-    }
-
-    if (className === 'face-mouth') {
-      const base = model.face.baseMouth || CHARACTER_CATALOG.mouths[0];
-      const mouth = mood === 'danger' ? 'mouth_sad' : mood === 'warn' ? 'mouth_oh' : base;
-      return this._path(['Face', 'Mouth', `${mouth}.png`]);
-    }
-
-    return this._path(['missing.png']);
+    if (className === 'face-nose') return { path: this._faceNoseFile(model), fallbackPath: '' };
+    if (className === 'face-mouth') return { path: this._faceMouthFile(model, mood), fallbackPath: '' };
+    return { path: this._path(['missing.png']), fallbackPath: '' };
   }
 
   _path(parts) {

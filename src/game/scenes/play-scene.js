@@ -353,8 +353,7 @@ export class PlayScene extends Phaser.Scene {
         body.position.x - character.width * 0.5,
         body.position.y - character.height * 0.5,
       );
-      const angle = Math.max(-0.25, Math.min(0.25, body.angle * 0.16));
-      character.container.setRotation(angle);
+      character.container.setRotation(0);
     });
   }
 

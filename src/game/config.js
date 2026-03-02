@@ -72,17 +72,27 @@ export const PASSENGER_POSITIONS = [
 export const CHARACTER_LAYOUT = {
   'skin-head': { x: 0.24, y: 0.04, w: 0.52, h: 0.34, z: 2 },
   'skin-neck': { x: 0.36, y: 0.31, w: 0.28, h: 0.1, z: 2 },
-  'skin-arm': { x: 0.06, y: 0.33, w: 0.56, h: 0.34, z: 1 },
-  'skin-leg': { x: 0.34, y: 0.57, w: 0.3, h: 0.39, z: 1 },
   shirt: { x: 0.18, y: 0.33, w: 0.64, h: 0.42, z: 3 },
   pants: { x: 0.2, y: 0.67, w: 0.62, h: 0.18, z: 4 },
-  shoes: { x: 0.26, y: 0.86, w: 0.5, h: 0.11, z: 5 },
   hair: { x: 0.21, y: 0.01, w: 0.58, h: 0.46, z: 8 },
   'face-eyebrows': { x: 0.32, y: 0.18, w: 0.39, h: 0.08, z: 10 },
   'face-eyes-left': { x: 0.31, y: 0.23, w: 0.17, h: 0.12, z: 9 },
   'face-eyes-right': { x: 0.52, y: 0.23, w: 0.17, h: 0.12, z: 9 },
   'face-nose': { x: 0.44, y: 0.29, w: 0.12, h: 0.1, z: 10 },
   'face-mouth': { x: 0.36, y: 0.35, w: 0.29, h: 0.1, z: 8 },
+};
+
+export const LIMB_LAYOUT = {
+  'skin-arm-left': { x: 0.1, y: 0.34, w: 0.26, h: 0.34, z: 1 },
+  'shirt-arm-left': { x: 0.1, y: 0.34, w: 0.26, h: 0.34, z: 2 },
+  'hand-left': { x: 0.03, y: 0.55, w: 0.14, h: 0.12, z: 4 },
+  'skin-leg-left': { x: 0.3, y: 0.59, w: 0.22, h: 0.34, z: 2 },
+  'shoe-left': { x: 0.28, y: 0.87, w: 0.22, h: 0.11, z: 5 },
+  'skin-leg-right': { x: 0.48, y: 0.59, w: 0.22, h: 0.34, z: 2 },
+  'shoe-right': { x: 0.5, y: 0.87, w: 0.22, h: 0.11, z: 5 },
+  'skin-arm-right': { x: 0.64, y: 0.34, w: 0.26, h: 0.34, z: 5 },
+  'shirt-arm-right': { x: 0.64, y: 0.34, w: 0.26, h: 0.34, z: 6 },
+  'hand-right': { x: 0.83, y: 0.55, w: 0.14, h: 0.12, z: 7 },
 };
 
 export const FACE_LAYOUT_ON_HEAD = {
