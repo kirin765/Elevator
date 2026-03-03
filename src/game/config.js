@@ -18,29 +18,63 @@ export const GAME_CONFIG = {
     pngBase: './assets/kenney_modular-characters/PNG',
     atlas: {
       skin: {
-        image: './assets/kenney_modular-characters/Spritesheet/sheet_skin.png',
+        // Kenney 배포본/내보내기 방식에 따라 파일명이 `sheet_skin.png` 또는 `sheet.png`인 경우가 있어 후보를 모두 둡니다.
+        images: [
+          './assets/kenney_modular-characters/Spritesheet/sheet_skin.png',
+          './assets/kenney_modular-characters/Spritesheet/sheet.png',
+        ],
         map: './assets/kenney_modular-characters/Spritesheet/sheet_skin.xml',
       },
       face: {
-        image: './assets/kenney_modular-characters/Spritesheet/sheet_face.png',
+        images: [
+          './assets/kenney_modular-characters/Spritesheet/sheet_face.png',
+          './assets/kenney_modular-characters/Spritesheet/sheet.png',
+        ],
         map: './assets/kenney_modular-characters/Spritesheet/sheet_face.xml',
       },
       shirts: {
-        image: './assets/kenney_modular-characters/Spritesheet/sheet_shirts.png',
+        images: [
+          './assets/kenney_modular-characters/Spritesheet/sheet_shirts.png',
+          './assets/kenney_modular-characters/Spritesheet/sheet.png',
+        ],
         map: './assets/kenney_modular-characters/Spritesheet/sheet_shirts.xml',
       },
       pants: {
-        image: './assets/kenney_modular-characters/Spritesheet/sheet_pants.png',
+        images: [
+          './assets/kenney_modular-characters/Spritesheet/sheet_pants.png',
+          './assets/kenney_modular-characters/Spritesheet/sheet.png',
+        ],
         map: './assets/kenney_modular-characters/Spritesheet/sheet_pants.xml',
       },
       shoes: {
-        image: './assets/kenney_modular-characters/Spritesheet/sheet_shoes.png',
+        images: [
+          './assets/kenney_modular-characters/Spritesheet/sheet_shoes.png',
+          './assets/kenney_modular-characters/Spritesheet/sheet.png',
+        ],
         map: './assets/kenney_modular-characters/Spritesheet/sheet_shoes.xml',
       },
       hair: {
-        image: './assets/kenney_modular-characters/Spritesheet/sheet_hair.png',
+        images: [
+          './assets/kenney_modular-characters/Spritesheet/sheet_hair.png',
+          './assets/kenney_modular-characters/Spritesheet/sheet.png',
+        ],
         map: './assets/kenney_modular-characters/Spritesheet/sheet_hair.xml',
       },
+    },
+  },
+  characterRendering: {
+    // 파츠별 개별 fit 스케일 대신, 머리 파츠 스케일을 기준으로 바디 파츠에 동일 스케일을 적용합니다.
+    // (얼굴 파츠는 머리 위 상대 레이아웃을 위해 슬롯-fit 유지)
+    useGlobalBodyScale: true,
+    globalScaleReferencePart: 'skin-head',
+    globalScaleExcludePrefix: 'face-',
+    // 필요 시 파츠별 미세 조정(1.0 = 기본)
+    partScaleMultipliers: {
+      hair: 1.0,
+      shirts: 1.0,
+      pants: 1.0,
+      shoes: 1.0,
+      skin: 1.0,
     },
   },
   reactionProfile: {

@@ -601,6 +601,7 @@ export class PlayScene extends Phaser.Scene {
   renderGameToText() {
     const state = this.runtime.state;
     const risk = this.runtime.riskFromPressure();
+    const bootIssues = this.registry.get('bootIssues') || [];
 
     const activeBodies = this.characters.filter((character) => character.visible && character.body);
     const avgVelocity = activeBodies.length
@@ -634,6 +635,7 @@ export class PlayScene extends Phaser.Scene {
         system: 'rexui',
         holdButtonPressed: state.isHolding,
       },
+      bootIssues,
       runSeed: state.runSeed,
     });
   }

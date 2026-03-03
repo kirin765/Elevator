@@ -116,12 +116,43 @@ export class AtlasCharacterFactory {
     character.model = model;
     character.mood = mood;
 
+    const renderingCfg = this.config.characterRendering || {};
+    const useGlobalBodyScale = renderingCfg.useGlobalBodyScale !== false;
+    const globalScaleExcludePrefix = renderingCfg.globalScaleExcludePrefix || 'face-';
+    const referencePart = renderingCfg.globalScaleReferencePart || 'skin-head';
+    const partScaleMultipliers = renderingCfg.partScaleMultipliers || {};
+    const characterScale = Number.isFinite(Number(this.config.characterScale)) ? Number(this.config.characterScale) : 1;
+
+    // 1) 기준 파츠(기본: 머리)를 먼저 적용하고, 그 스케일을 “바디 공통 스케일”로 사용합니다.
+    const reference = character.parts.get(referencePart);
+    if (reference) {
+      const spec = this._resolvePartPathSpec(referencePart, model, mood);
+      // 기준 파츠는 슬롯-fit을 사용해 “올바른 기준 스케일”을 만든다.
+      this._applyPartTexture(reference, 'skin', spec.path, spec.fallbackPath, {
+        scaleMode: 'slot-fit',
+        characterScale,
+      });
+    }
+
+    const referenceMode = reference ? reference.getData('mode') : 'missing';
+    const referenceScaleRaw = reference ? Math.abs(reference.scaleY || 0) : 0;
+    const referenceScale = referenceMode && referenceMode !== 'missing' ? referenceScaleRaw : 0;
+    character.container.setData('baseScale', referenceScale > 0 ? referenceScale : 0);
+
     PART_ORDER.forEach((partInfo) => {
+      if (partInfo.className === referencePart) return;
       if (partInfo.className.startsWith('face-')) return;
       const part = character.parts.get(partInfo.className);
       if (!part) return;
       const spec = this._resolvePartPathSpec(partInfo.className, model, mood);
-      this._applyPartTexture(part, partInfo.category, spec.path, spec.fallbackPath);
+      const multiplier = Number(partScaleMultipliers[partInfo.category] ?? 1);
+      this._applyPartTexture(part, partInfo.category, spec.path, spec.fallbackPath, {
+        scaleMode: useGlobalBodyScale && referenceScale > 0 ? 'global-body' : 'slot-fit',
+        globalBaseScale: referenceScale,
+        globalMultiplier: Number.isFinite(multiplier) ? multiplier : 1,
+        excludePrefix: globalScaleExcludePrefix,
+        characterScale,
+      });
     });
 
     this._updateFaceLayout(character);
@@ -131,7 +162,10 @@ export class AtlasCharacterFactory {
       const part = character.parts.get(partInfo.className);
       if (!part) return;
       const spec = this._resolvePartPathSpec(partInfo.className, model, mood);
-      this._applyPartTexture(part, partInfo.category, spec.path, spec.fallbackPath);
+      this._applyPartTexture(part, partInfo.category, spec.path, spec.fallbackPath, {
+        scaleMode: 'slot-fit',
+        characterScale,
+      });
     });
   }
 
@@ -263,25 +297,46 @@ export class AtlasCharacterFactory {
     return `${value}`.replace(/[^a-zA-Z0-9_-]/g, '_');
   }
 
-  _fitPartToSlot(part, slotW, slotH, mirror = Boolean(part.getData('mirror'))) {
+  _fitPartToSlot(part, slotW, slotH, mirror = Boolean(part.getData('mirror')), opts = {}) {
     const safeSlotW = Math.max(1, Number(slotW) || 1);
     const safeSlotH = Math.max(1, Number(slotH) || 1);
     const srcW = Math.max(1, part.width || part.frame?.width || 1);
     const srcH = Math.max(1, part.height || part.frame?.height || 1);
-    const scale = Math.max(0.0001, Math.min(safeSlotW / srcW, safeSlotH / srcH));
-    part.setScale(mirror ? -scale : scale, scale);
+
+    const characterScale = Number.isFinite(Number(opts.characterScale)) ? Number(opts.characterScale) : 1;
+    const scaleMode = opts.scaleMode || 'slot-fit';
+    const excludePrefix = opts.excludePrefix || 'face-';
+    const className = part.getData('className') || '';
+
+    if (scaleMode === 'global-body' && className && !String(className).startsWith(excludePrefix)) {
+      const base = Number(opts.globalBaseScale) || 0;
+      const multiplier = Number.isFinite(Number(opts.globalMultiplier)) ? Number(opts.globalMultiplier) : 1;
+      const scale = Math.max(0.0001, base * multiplier * characterScale);
+      part.setScale(mirror ? -scale : scale, scale);
+    } else {
+      const scale = Math.max(0.0001, Math.min(safeSlotW / srcW, safeSlotH / srcH) * characterScale);
+      part.setScale(mirror ? -scale : scale, scale);
+    }
     part.setData('slotW', safeSlotW);
     part.setData('slotH', safeSlotH);
   }
 
-  _setPartSlot(part, slot, mirror = false) {
+  _setPartSlot(part, slot, mirror = false, fitOpts = {}) {
     part.setData('slotX', slot.x);
     part.setData('slotY', slot.y);
     part.setData('slotW', slot.w);
     part.setData('slotH', slot.h);
     part.setData('mirror', mirror);
     part.setPosition(slot.x + slot.w * 0.5, slot.y + slot.h * 0.5);
-    this._fitPartToSlot(part, slot.w, slot.h, mirror);
+    this._fitPartToSlot(part, slot.w, slot.h, mirror, fitOpts);
+
+    const offsetsByClass = this.config.characterRendering?.partOffsetsByClass || {};
+    const className = part.getData('className') || '';
+    const offset = className ? offsetsByClass[className] : null;
+    if (offset && (Number.isFinite(Number(offset.x)) || Number.isFinite(Number(offset.y)))) {
+      part.x += Number(offset.x) || 0;
+      part.y += Number(offset.y) || 0;
+    }
   }
 
   _updateFaceLayout(character) {
@@ -364,14 +419,20 @@ export class AtlasCharacterFactory {
     console.warn(`[Character] ${className} fallback (${source}): ${fromName} -> ${toName}`);
   }
 
-  _setMissingPart(part, missingLabel) {
-    this._fitPartToSlot(part, part.getData('slotW'), part.getData('slotH'), Boolean(part.getData('mirror')));
+  _setMissingPart(part, missingLabel, fitOpts = {}) {
+    this._fitPartToSlot(
+      part,
+      part.getData('slotW'),
+      part.getData('slotH'),
+      Boolean(part.getData('mirror')),
+      fitOpts,
+    );
     part.setTexture('missing-part');
     part.setData('mode', 'missing');
     part.setData('missingKey', missingLabel);
   }
 
-  _applyPartTexture(part, category, partPath, fallbackPath = '') {
+  _applyPartTexture(part, category, partPath, fallbackPath = '', fitOpts = {}) {
     const paths = [partPath, fallbackPath].filter(Boolean).filter((value, index, arr) => arr.indexOf(value) === index);
 
     for (let i = 0; i < paths.length; i += 1) {
@@ -381,7 +442,13 @@ export class AtlasCharacterFactory {
         const cutTextureKey = this._getOrCreateCutTexture(category, atlasResolved.atlasKey, atlasResolved.frame);
         if (cutTextureKey) {
           part.setTexture(cutTextureKey);
-          this._fitPartToSlot(part, part.getData('slotW'), part.getData('slotH'), Boolean(part.getData('mirror')));
+          this._fitPartToSlot(
+            part,
+            part.getData('slotW'),
+            part.getData('slotH'),
+            Boolean(part.getData('mirror')),
+            fitOpts,
+          );
           part.setData('mode', 'atlas');
           part.setData('missingKey', '');
           if (candidatePath !== partPath) {
@@ -397,19 +464,25 @@ export class AtlasCharacterFactory {
       .filter(Boolean)
       .join('|');
     const missingLabel = `${category}:${missingNames || 'unknown'}`;
-    this._applyPngFallback(part, partPath, missingLabel, fallbackPath);
+    this._applyPngFallback(part, partPath, missingLabel, fallbackPath, fitOpts);
   }
 
-  _applyPngFallback(part, pngPath, missingLabel, fallbackPath = '') {
+  _applyPngFallback(part, pngPath, missingLabel, fallbackPath = '', fitOpts = {}) {
     if (!pngPath) {
-      this._setMissingPart(part, missingLabel);
+      this._setMissingPart(part, missingLabel, fitOpts);
       return;
     }
 
     const key = `png-${this._withoutExtension(this._extractFilename(pngPath)).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
     if (this.scene.textures.exists(key)) {
       part.setTexture(key);
-      this._fitPartToSlot(part, part.getData('slotW'), part.getData('slotH'), Boolean(part.getData('mirror')));
+      this._fitPartToSlot(
+        part,
+        part.getData('slotW'),
+        part.getData('slotH'),
+        Boolean(part.getData('mirror')),
+        fitOpts,
+      );
       part.setData('mode', 'png');
       part.setData('missingKey', '');
       return;
@@ -436,6 +509,7 @@ export class AtlasCharacterFactory {
             current.part.getData('slotW'),
             current.part.getData('slotH'),
             Boolean(current.part.getData('mirror')),
+            fitOpts,
           );
           current.part.setData('mode', 'png');
           current.part.setData('missingKey', '');
@@ -444,11 +518,11 @@ export class AtlasCharacterFactory {
 
         if (current.fallbackPath && current.fallbackPath !== current.primaryPath) {
           this._warnPartFallback(current.part, current.primaryPath, current.fallbackPath, 'png');
-          this._applyPngFallback(current.part, current.fallbackPath, current.missingLabel, '');
+          this._applyPngFallback(current.part, current.fallbackPath, current.missingLabel, '', fitOpts);
           return;
         }
 
-        this._setMissingPart(current.part, current.missingLabel);
+        this._setMissingPart(current.part, current.missingLabel, fitOpts);
       });
       this.dynamicLoads.delete(key);
     };
