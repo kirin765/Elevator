@@ -13,6 +13,9 @@ export class BootScene extends Phaser.Scene {
     this.load.atlasXML('atlas-pants', atlas.pants.image, atlas.pants.map);
     this.load.atlasXML('atlas-shoes', atlas.shoes.image, atlas.shoes.map);
     this.load.atlasXML('atlas-hair', atlas.hair.image, atlas.hair.map);
+    if (!this.textures.exists('illustration')) {
+      this.load.image('illustration', `./assets/ui/${'\uC77C'}${'\uB7EC'}${'\uC2A4'}${'\uD2B8'}.png`);
+    }
   }
 
   create() {

@@ -511,7 +511,7 @@ export class AtlasCharacterFactory {
   }
 
   _faceEyebrowsFile(model, mood) {
-    const variant = mood === 'danger' ? 3 : mood === 'warn' ? 2 : 1;
+    const variant = mood === 'panic' ? 3 : mood === 'danger' ? 3 : mood === 'warn' ? 2 : 1;
     return this._path(['Face', 'Eyebrows', `${model.face.eyebrowColor}Brow${variant}.png`]);
   }
 
@@ -521,7 +521,7 @@ export class AtlasCharacterFactory {
 
   _faceMouthFile(model, mood) {
     const base = model.face.baseMouth || CHARACTER_CATALOG.mouths[0];
-    const mouth = mood === 'danger' ? 'mouth_sad' : mood === 'warn' ? 'mouth_oh' : base;
+    const mouth = mood === 'panic' ? 'mouth_sad' : mood === 'danger' ? 'mouth_sad' : mood === 'warn' ? 'mouth_oh' : base;
     return this._path(['Face', 'Mouth', `${mouth}.png`]);
   }
 
