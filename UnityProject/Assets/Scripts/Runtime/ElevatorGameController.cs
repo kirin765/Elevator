@@ -494,7 +494,7 @@ public class ElevatorGameController : MonoBehaviour
         }
 
         var ratio = partsTotal > 0 ? (partsMissing / (float)partsTotal) * 100f : 0f;
-        return $"Missing parts: {partsMissing}/{partsTotal} ({ratio:F1}%) {string.Join(\" \", distinctMissing)}";
+        return $"Missing parts: {partsMissing}/{partsTotal} ({ratio:F1}%) {string.Join(" ", distinctMissing)}";
     }
 
     private DebugSnapshot BuildDebugSnapshot()
