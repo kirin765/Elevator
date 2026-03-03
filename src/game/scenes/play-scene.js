@@ -35,6 +35,8 @@ export class PlayScene extends Phaser.Scene {
     this.nextImpulseAt = 0;
     this.motionTick = 0;
     this.lastRepairAt = 0;
+    this.lastMissingSummaryAt = 0;
+    this.lastMissingSummaryText = '';
     this.missingLog = new Set();
     this.audioUnlocked = false;
   }
@@ -189,6 +191,8 @@ export class PlayScene extends Phaser.Scene {
     this.nextImpulseAt = 0;
     this.motionTick = 0;
     this.lastRepairAt = 0;
+    this.lastMissingSummaryAt = 0;
+    this.lastMissingSummaryText = '';
 
     this.characterFactory.updateCharacter(this.heroCharacter, normalizeModel(this.heroModel), 'stable');
     this.heroCharacter.container.setVisible(true);
@@ -214,6 +218,8 @@ export class PlayScene extends Phaser.Scene {
     this.rng = makeRng(runSeed);
     this.nextImpulseAt = 0;
     this.lastRepairAt = 0;
+    this.lastMissingSummaryAt = 0;
+    this.lastMissingSummaryText = '';
 
     this.passengerModels = [];
     for (let i = 0; i < this.passengerCharacters.length; i += 1) {
@@ -462,6 +468,39 @@ export class PlayScene extends Phaser.Scene {
     }
   }
 
+  _summarizeMissingParts(stats) {
+    if (!stats) return '';
+    const lines = [];
+    const ratio = stats.partsTotal ? ((stats.partsMissing / stats.partsTotal) * 100).toFixed(1) : '0.0';
+    const layoutState = stats.layoutCollapsed ? 'collapsed' : 'stable';
+    lines.push(`missing=${stats.partsMissing}/${stats.partsTotal} (${ratio}%), layout=${layoutState}`);
+
+    const missingByRole = stats.missingByRole || {};
+    const missingByClass = stats.missingByCategory || {};
+    const roleEntries = Object.entries(missingByRole).sort((a, b) => b[1] - a[1]);
+    if (roleEntries.length) {
+      lines.push('by-role=' + roleEntries.map(([role, count]) => `${role}:${count}`).join(', '));
+    }
+
+    const classEntries = Object.entries(missingByClass)
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4);
+    if (classEntries.length) {
+      lines.push('by-category=' + classEntries.map((entry) => `${entry.category}:${entry.count}`).join(', '));
+    }
+
+    const topMissing = (stats.topMissing || [])
+      .filter((entry) => entry && entry.className)
+      .slice(0, 4)
+      .map((entry) => `${entry.className}×${entry.count}`);
+    if (topMissing.length) {
+      lines.push('top=' + topMissing.join(', '));
+    }
+
+    return lines.join(' | ');
+  }
+
   _autoRepairIfNeeded(stats) {
     if (!stats || this.runtime?.state?.phase !== 'running') return;
     if (this.time.now < this.lastRepairAt + 2500) return;
@@ -475,6 +514,9 @@ export class PlayScene extends Phaser.Scene {
     if (missingRatio < 0.16 && !layoutCollapsed) {
       return;
     }
+
+    const summary = this._summarizeMissingParts(stats);
+    console.warn(`[Atlas] Auto-repair triggered (${summary || 'missing parts detected'})`);
 
     this.lastRepairAt = this.time.now;
 
@@ -499,6 +541,16 @@ export class PlayScene extends Phaser.Scene {
       this.missingLog.add(missingKey);
       console.warn(`[Atlas] Missing frame ${missingKey}`);
     });
+
+    const now = this.time.now;
+    if (now < this.lastMissingSummaryAt + 3500) return;
+    this.lastMissingSummaryAt = now;
+
+    const summaryText = this._summarizeMissingParts(stats);
+    if (summaryText && summaryText !== this.lastMissingSummaryText) {
+      this.lastMissingSummaryText = summaryText;
+      console.warn(`[Atlas] Missing summary => ${summaryText}`);
+    }
   }
 
   _stepGame(dtMs) {

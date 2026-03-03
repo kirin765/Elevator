@@ -142,6 +142,9 @@ export class AtlasCharacterFactory {
     let partsMissing = 0;
     let distortedParts = 0;
     let layoutCollapsed = false;
+    const missingByClass = {};
+    const missingByCategory = {};
+    const missingByRole = {};
 
     characters.forEach((character) => {
       if (!character) return;
@@ -170,6 +173,14 @@ export class AtlasCharacterFactory {
           if (miss && !missingFrames.includes(miss)) {
             missingFrames.push(miss);
           }
+
+          const category = partInfo.category;
+          const className = partInfo.className;
+          const role = character.role || 'unknown';
+          missingByClass[className] = (missingByClass[className] || 0) + 1;
+          missingByCategory[category] = (missingByCategory[category] || 0) + 1;
+          if (!missingByRole[role]) missingByRole[role] = 0;
+          missingByRole[role] += 1;
         }
       });
 
@@ -190,12 +201,21 @@ export class AtlasCharacterFactory {
       }
     });
 
+    const topMissing = Object.entries(missingByClass)
+      .map(([className, count]) => ({ className, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+
     return {
       mode: 'atlas',
       partsTotal,
       partsRendered: Math.max(0, partsTotal - partsMissing),
       partsMissing,
       missingFrames,
+      missingByClass,
+      missingByCategory,
+      missingByRole,
+      topMissing,
       distortedParts,
       oversizedParts,
       layoutCollapsed,
