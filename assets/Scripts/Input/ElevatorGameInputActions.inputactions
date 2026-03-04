@@ -1,0 +1,134 @@
+{
+  "name": "ElevatorGameInputActions",
+  "maps": [
+    {
+      "name": "Game",
+      "id": "8d8bf8a2f3e2456d9d4c4f5a7f9bb9a0",
+      "actions": [
+        {
+          "name": "Hold",
+          "type": "Button",
+          "id": "a1f4a4f2b4ed4b4ab7d0a9f8c6a0f1d2",
+          "expectedControlType": "Button"
+        },
+        {
+          "name": "AnyTap",
+          "type": "Button",
+          "id": "d8a6b0e4f6c248f48c6d4f2d3c7a7f0b1",
+          "expectedControlType": "Button"
+        }
+      ],
+      "bindings": [
+        {
+          "name": "",
+          "id": "d7b8d3f2f8f3414e8b8a74f7a2fbe2c31",
+          "path": "<Touchscreen>/primaryTouch/press",
+          "action": "Hold",
+          "isComposite": 0,
+          "isPartOfComposite": 0
+        },
+        {
+          "name": "",
+          "id": "6c53f6a0f4f84cd3a2d8f6e5e5f1ec5c2",
+          "path": "<Mouse>/leftButton",
+          "action": "Hold",
+          "isComposite": 0,
+          "isPartOfComposite": 0
+        },
+        {
+          "name": "",
+          "id": "2f0d5d7baf9a4ec0c8d4f1a6f3b7ea0f5",
+          "path": "<Touchscreen>/primaryTouch/press",
+          "action": "AnyTap",
+          "isComposite": 0,
+          "isPartOfComposite": 0
+        },
+        {
+          "name": "",
+          "id": "a9f2d6abf4ed4a7f8c3f1e6d4e2b7a9c2",
+          "path": "<Mouse>/leftButton",
+          "action": "AnyTap",
+          "isComposite": 0,
+          "isPartOfComposite": 0
+        }
+      ]
+    },
+    {
+      "name": "UI",
+      "id": "5d6f3f2e2c2c4b4e8bd7f0a4f9c5d1e2",
+      "actions": [
+        {
+          "name": "Submit",
+          "type": "Button",
+          "id": "f3f2c4a9d4b74e8cb8f8d5a7f3c6e1d5a",
+          "expectedControlType": "Button"
+        },
+        {
+          "name": "Navigate",
+          "type": "Value",
+          "id": "a8f6c2e1d4b94f7eb3d2e8a6f5c1a4d2b",
+          "expectedControlType": "Vector2"
+        }
+      ],
+      "bindings": [
+        {
+          "name": "",
+          "id": "0f7f9a1f8d3343a8f9b6e5e2a7e4d3c2",
+          "path": "<Gamepad>/buttonSouth",
+          "action": "Submit",
+          "isComposite": 0,
+          "isPartOfComposite": 0
+        },
+        {
+          "name": "",
+          "id": "a3b5d2c4e6f84a2e9c4e5f1b4d7a8b9c",
+          "path": "<Keyboard>/enter",
+          "action": "Submit",
+          "isComposite": 0,
+          "isPartOfComposite": 0
+        },
+        {
+          "name": "2DVector",
+          "id": "1d7f4a5d8f6a4f2c8b7f1f9e5d2a3c4b",
+          "path": "2DVector",
+          "action": "Navigate",
+          "isComposite": 1,
+          "isPartOfComposite": 0
+        },
+        {
+          "name": "up",
+          "id": "0d4f6c7a8e2d4f3a9c8b4d2a7f1e6a3b",
+          "path": "<Keyboard>/upArrow",
+          "action": "Navigate",
+          "isComposite": 1,
+          "isPartOfComposite": 1
+        },
+        {
+          "name": "down",
+          "id": "8a9f1c7e2f4a4b7c9d8e1f6a3b2c5d4f",
+          "path": "<Keyboard>/downArrow",
+          "action": "Navigate",
+          "isComposite": 1,
+          "isPartOfComposite": 1
+        },
+        {
+          "name": "left",
+          "id": "4b2c7f1a9d8e4c6b3a5f2e7d1c8b4f6a",
+          "path": "<Keyboard>/leftArrow",
+          "action": "Navigate",
+          "isComposite": 1,
+          "isPartOfComposite": 1
+        },
+        {
+          "name": "right",
+          "id": "3c1e7f4a2d9b4c6a8e1f5d3b7a2c6f9e",
+          "path": "<Keyboard>/rightArrow",
+          "action": "Navigate",
+          "isComposite": 1,
+          "isPartOfComposite": 1
+        }
+      ]
+    }
+  ],
+  "controlSchemes": []
+}

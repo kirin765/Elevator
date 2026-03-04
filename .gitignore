@@ -1,0 +1,27 @@
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+# Unity IDE
+.vs/
+*.csproj
+*.pidb
+*.suo
+*.sln
+*.user
+*.userprefs
+*.unityproj
+*.booproj
+# OS
+.DS_Store
+# Web exports
+*.apk
+*.aab
+*.keystore
+# Project-specific
+play-test-shot.png
+/tmp-requests.json

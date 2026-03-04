@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d9ed10c322174748b27092cc5a64cd5, type: 3}
+  m_Name: ElevatorProjectConfig
+  m_EditorClassIdentifier: Assembly-CSharp::Elevator.ElevatorProjectConfig
+  referenceWidth: 540
+  referenceHeight: 960
+  targetAspect: 0.5625
+  targetFrameRate: 60
+  forcePortrait: 1
+  targetFloor: 10
+  travelDurationMs: 25000
+  pressureMax: 100
+  pressureRisePerSec: 8
+  pressureReleasePerSec: 20
+  warnThreshold: 70
+  dangerThreshold: 90
+  npcCount: 3

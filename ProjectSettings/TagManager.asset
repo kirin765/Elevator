@@ -1,0 +1,85 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!78 &1
+TagManager:
+  serializedVersion: 3
+  tags: []
+  layers:
+  - Default
+  - TransparentFX
+  - Ignore Raycast
+  - 
+  - Water
+  - UI
+  - BG
+  - Character
+  - FX
+  - GasFX
+  - Layer5
+  - Layer6
+  - Layer7
+  - Layer8
+  - Layer9
+  - Layer10
+  - Layer11
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  m_SortingLayers:
+  - name: Default
+    uniqueID: 0
+    locked: 0
+  - name: BG
+    uniqueID: 100
+    locked: 0
+  - name: Character
+    uniqueID: 101
+    locked: 0
+  - name: FX
+    uniqueID: 102
+    locked: 0
+  - name: UI
+    uniqueID: 103
+    locked: 0
+  - name: GasFX
+    uniqueID: 104
+    locked: 0
+  m_RenderingLayers:
+  - Default
